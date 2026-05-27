@@ -145,7 +145,7 @@ async function syncSeminarsToSupabase(data) {
         tag: item.tag,
         title: item.title,
         meta: item.meta || '',
-        desc: item.desc || '',
+        desc_text: item.desc || '',
         img: item.img || '',
         order_index: index
       }));
@@ -437,7 +437,7 @@ function initSeminarsCMS() {
             tag: item.tag,
             title: item.title,
             meta: item.meta,
-            desc: item.desc,
+            desc: item.desc_text || item.desc || '',
             img: item.img
           }));
           localStorage.setItem('hsf_seminars', JSON.stringify(formatted));

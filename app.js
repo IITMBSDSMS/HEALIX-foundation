@@ -731,7 +731,7 @@ function initSeminarsGallery() {
             tag: item.tag,
             title: item.title,
             meta: item.meta,
-            desc: item.desc,
+            desc: item.desc_text || item.desc || '',
             img: item.img
           }));
           localStorage.setItem('hsf_seminars', JSON.stringify(formatted));
