@@ -2,6 +2,16 @@
    HEALIX SAHYOG FOUNDATION (HSF) - INTERACTIVITY & ANIMATIONS
    ========================================================================== */
 
+// Initialize Supabase if configuration parameters are present in config.js
+let supabaseClient = null;
+if (window.HSF_CONFIG && window.HSF_CONFIG.supabaseUrl && window.HSF_CONFIG.supabaseKey) {
+  try {
+    supabaseClient = supabase.createClient(window.HSF_CONFIG.supabaseUrl, window.HSF_CONFIG.supabaseKey);
+  } catch (err) {
+    console.error('Failed to initialize Supabase client:', err);
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   // 1. Initialize preloader first so it is guaranteed to handle locking and dismiss hooks
   try {
@@ -708,6 +718,29 @@ function initSeminarsGallery() {
 
   loadSlides();
   startAutoplay();
+
+  // Async fetch from Supabase to sync fresh seminars
+  if (supabaseClient) {
+    supabaseClient.from('hsf_seminars').select('*').order('order_index', { ascending: true })
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('Error fetching seminars from Supabase:', error);
+        } else if (data && data.length > 0) {
+          const formatted = data.map(item => ({
+            id: item.id,
+            tag: item.tag,
+            title: item.title,
+            meta: item.meta,
+            desc: item.desc,
+            img: item.img
+          }));
+          localStorage.setItem('hsf_seminars', JSON.stringify(formatted));
+          clearInterval(autoplayTimer);
+          loadSlides();
+          startAutoplay();
+        }
+      });
+  }
 }
 
 
@@ -804,78 +837,105 @@ function initTestimonialsSlider() {
 
   if (!slider) return;
 
-  // Dynamically render slides
-  const testimonials = getTestimonialsData();
-  buildTestimonialsSlides(slider, testimonials);
-
-  const slides = document.querySelectorAll('.testimonial-slide');
-  if (slides.length === 0) return;
-
-  let currentIndex = 0;
   let autoplayInterval;
+  let activeNextBtn = nextBtn;
+  let activePrevBtn = prevBtn;
 
-  // Create dot paginators
-  if (dotsContainer) {
-    dotsContainer.innerHTML = '';
-    slides.forEach((_, idx) => {
-      const dot = document.createElement('span');
-      dot.classList.add('slider-dot');
-      if (idx === 0) dot.classList.add('active');
-      dot.addEventListener('click', () => goToSlide(idx));
-      dotsContainer.appendChild(dot);
-    });
-  }
+  function renderAndBind(testimonials) {
+    if (autoplayInterval) clearInterval(autoplayInterval);
+    slider.innerHTML = '';
+    buildTestimonialsSlides(slider, testimonials);
 
-  const dots = document.querySelectorAll('.slider-dot');
+    const slides = document.querySelectorAll('.testimonial-slide');
+    if (slides.length === 0) return;
 
-  function updateSlider() {
-    slider.style.transform = `translateX(-${currentIndex * 100}%)`;
-    dots.forEach((dot, idx) => {
-      if (idx === currentIndex) dot.classList.add('active');
-      else dot.classList.remove('active');
-    });
-  }
+    let currentIndex = 0;
 
-  function nextSlide() {
-    currentIndex = (currentIndex + 1) % slides.length;
-    updateSlider();
-  }
+    if (dotsContainer) {
+      dotsContainer.innerHTML = '';
+      slides.forEach((_, idx) => {
+        const dot = document.createElement('span');
+        dot.classList.add('slider-dot');
+        if (idx === 0) dot.classList.add('active');
+        dot.addEventListener('click', () => goToSlide(idx));
+        dotsContainer.appendChild(dot);
+      });
+    }
 
-  function prevSlide() {
-    currentIndex = (currentIndex - 1 + slides.length) % slides.length;
-    updateSlider();
-  }
+    const dots = document.querySelectorAll('.slider-dot');
 
-  function goToSlide(idx) {
-    currentIndex = idx;
-    updateSlider();
-    resetAutoplay();
-  }
+    function updateSlider() {
+      slider.style.transform = `translateX(-${currentIndex * 100}%)`;
+      dots.forEach((dot, idx) => {
+        if (idx === currentIndex) dot.classList.add('active');
+        else dot.classList.remove('active');
+      });
+    }
 
-  function startAutoplay() {
-    autoplayInterval = setInterval(nextSlide, 6000);
-  }
+    function nextSlide() {
+      currentIndex = (currentIndex + 1) % slides.length;
+      updateSlider();
+    }
 
-  function resetAutoplay() {
-    clearInterval(autoplayInterval);
+    function prevSlide() {
+      currentIndex = (currentIndex - 1 + slides.length) % slides.length;
+      updateSlider();
+    }
+
+    function goToSlide(idx) {
+      currentIndex = idx;
+      updateSlider();
+      resetAutoplay();
+    }
+
+    function startAutoplay() {
+      autoplayInterval = setInterval(nextSlide, 6000);
+    }
+
+    function resetAutoplay() {
+      clearInterval(autoplayInterval);
+      startAutoplay();
+    }
+
+    if (activeNextBtn) {
+      const newNext = activeNextBtn.cloneNode(true);
+      activeNextBtn.parentNode.replaceChild(newNext, activeNextBtn);
+      activeNextBtn = newNext;
+      activeNextBtn.addEventListener('click', () => {
+        nextSlide();
+        resetAutoplay();
+      });
+    }
+
+    if (activePrevBtn) {
+      const newPrev = activePrevBtn.cloneNode(true);
+      activePrevBtn.parentNode.replaceChild(newPrev, activePrevBtn);
+      activePrevBtn = newPrev;
+      activePrevBtn.addEventListener('click', () => {
+        prevSlide();
+        resetAutoplay();
+      });
+    }
+
     startAutoplay();
   }
 
-  if (nextBtn) {
-    nextBtn.addEventListener('click', () => {
-      nextSlide();
-      resetAutoplay();
-    });
-  }
+  // Initial render from local storage or defaults
+  const testimonials = getTestimonialsData();
+  renderAndBind(testimonials);
 
-  if (prevBtn) {
-    prevBtn.addEventListener('click', () => {
-      prevSlide();
-      resetAutoplay();
-    });
+  // Async fetch from Supabase to sync fresh testimonials
+  if (supabaseClient) {
+    supabaseClient.from('hsf_testimonials').select('*').order('order_index', { ascending: true })
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('Error fetching testimonials from Supabase:', error);
+        } else if (data && data.length > 0) {
+          localStorage.setItem('hsf_testimonials', JSON.stringify(data));
+          renderAndBind(data);
+        }
+      });
   }
-
-  startAutoplay();
 }
 
 /* ==========================================================================
@@ -916,6 +976,26 @@ function initPartnerForm() {
       localStorage.setItem('hsf_submissions', JSON.stringify(submissions));
     } catch (err) {
       console.error('Error saving submission to localStorage:', err);
+    }
+
+    // Save to Supabase if configured
+    if (supabaseClient) {
+      supabaseClient.from('hsf_submissions').insert([
+        {
+          name: newSubmission.name,
+          email: newSubmission.email,
+          org: newSubmission.org,
+          sector: newSubmission.sector,
+          message: newSubmission.message,
+          created_at: newSubmission.timestamp
+        }
+      ]).then(({ error }) => {
+        if (error) {
+          console.error('Failed to sync submission to Supabase:', error);
+        } else {
+          console.log('Submission successfully synced to Supabase.');
+        }
+      });
     }
     
     // Customize modal message

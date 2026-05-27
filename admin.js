@@ -2,6 +2,16 @@
    HEALIX SAHYOG FOUNDATION (HSF) - ADMIN PANEL JS
    ========================================================================== */
 
+// Initialize Supabase if configuration parameters are present in config.js
+let supabaseClient = null;
+if (window.HSF_CONFIG && window.HSF_CONFIG.supabaseUrl && window.HSF_CONFIG.supabaseKey) {
+  try {
+    supabaseClient = supabase.createClient(window.HSF_CONFIG.supabaseUrl, window.HSF_CONFIG.supabaseKey);
+  } catch (err) {
+    console.error('Failed to initialize Supabase client:', err);
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   // Initialize Core Admin features
   initAdminTheme();
@@ -120,6 +130,35 @@ const SEM_DEFAULTS = [
   { id:'sem-4', tag:'Seminar', title:'Biomedical AI Seminar', meta:'May 08, 2026 • Research Labs', desc:'HSF researchers hosting academic heads to share models on neural network sequences and database alignments.', img:'https://images.unsplash.com/photo-1531482615713-2afd69097998?q=80&w=1920' }
 ];
 
+async function syncSeminarsToSupabase(data) {
+  if (!supabaseClient) return;
+  try {
+    const { error: deleteError } = await supabaseClient
+      .from('hsf_seminars')
+      .delete()
+      .neq('id', 'none');
+    if (deleteError) throw deleteError;
+    
+    if (data.length > 0) {
+      const rows = data.map((item, index) => ({
+        id: item.id,
+        tag: item.tag,
+        title: item.title,
+        meta: item.meta || '',
+        desc: item.desc || '',
+        img: item.img || '',
+        order_index: index
+      }));
+      const { error: insertError } = await supabaseClient
+        .from('hsf_seminars')
+        .insert(rows);
+      if (insertError) throw insertError;
+    }
+  } catch (err) {
+    console.error('Failed to sync seminars to Supabase:', err);
+  }
+}
+
 function loadSemCMS() {
   try {
     const s = localStorage.getItem('hsf_seminars');
@@ -130,6 +169,9 @@ function loadSemCMS() {
 
 function saveSemCMS(data) {
   localStorage.setItem('hsf_seminars', JSON.stringify(data));
+  if (supabaseClient) {
+    syncSeminarsToSupabase(data);
+  }
 }
 
 function initSeminarsCMS() {
@@ -382,6 +424,28 @@ function initSeminarsCMS() {
   }
 
   renderGrid();
+
+  // Async fetch from Supabase to sync fresh seminars
+  if (supabaseClient) {
+    supabaseClient.from('hsf_seminars').select('*').order('order_index', { ascending: true })
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('Error fetching seminars from Supabase:', error);
+        } else if (data && data.length > 0) {
+          const formatted = data.map(item => ({
+            id: item.id,
+            tag: item.tag,
+            title: item.title,
+            meta: item.meta,
+            desc: item.desc,
+            img: item.img
+          }));
+          localStorage.setItem('hsf_seminars', JSON.stringify(formatted));
+          seminars = formatted;
+          renderGrid();
+        }
+      });
+  }
 }
 
 
@@ -424,6 +488,35 @@ const TESTIMONIALS_DEFAULTS = [
   }
 ];
 
+async function syncTestimonialsToSupabase(data) {
+  if (!supabaseClient) return;
+  try {
+    const { error: deleteError } = await supabaseClient
+      .from('hsf_testimonials')
+      .delete()
+      .neq('id', 'none');
+    if (deleteError) throw deleteError;
+    
+    if (data.length > 0) {
+      const rows = data.map((item, index) => ({
+        id: item.id,
+        rating: parseInt(item.rating || 5, 10),
+        text: item.text || '',
+        name: item.name || '',
+        role: item.role || '',
+        img: item.img || '',
+        order_index: index
+      }));
+      const { error: insertError } = await supabaseClient
+        .from('hsf_testimonials')
+        .insert(rows);
+      if (insertError) throw insertError;
+    }
+  } catch (err) {
+    console.error('Failed to sync testimonials to Supabase:', err);
+  }
+}
+
 function loadTestiCMS() {
   try {
     const t = localStorage.getItem('hsf_testimonials');
@@ -434,6 +527,9 @@ function loadTestiCMS() {
 
 function saveTestiCMS(data) {
   localStorage.setItem('hsf_testimonials', JSON.stringify(data));
+  if (supabaseClient) {
+    syncTestimonialsToSupabase(data);
+  }
 }
 
 function initTestimonialsCMS() {
@@ -692,6 +788,20 @@ function initTestimonialsCMS() {
   }
 
   renderGrid();
+
+  // Async fetch from Supabase to sync fresh testimonials
+  if (supabaseClient) {
+    supabaseClient.from('hsf_testimonials').select('*').order('order_index', { ascending: true })
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('Error fetching testimonials from Supabase:', error);
+        } else if (data && data.length > 0) {
+          localStorage.setItem('hsf_testimonials', JSON.stringify(data));
+          testimonials = data;
+          renderGrid();
+        }
+      });
+  }
 }
 
 
@@ -745,6 +855,30 @@ function initDashboard() {
       allSubmissions = [];
     }
     applyFilters();
+
+    // Async fetch from Supabase to sync fresh submissions
+    if (supabaseClient) {
+      supabaseClient.from('hsf_submissions').select('*')
+        .then(({ data, error }) => {
+          if (error) {
+            console.error('Error fetching submissions from Supabase:', error);
+          } else if (data) {
+            const formatted = data.map(item => ({
+              name: item.name,
+              email: item.email,
+              org: item.org,
+              sector: item.sector,
+              message: item.message,
+              timestamp: item.created_at
+            }));
+            // Sort chronologically, newest first
+            formatted.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            localStorage.setItem('hsf_submissions', JSON.stringify(formatted));
+            allSubmissions = formatted;
+            applyFilters();
+          }
+        });
+    }
   }
 
   // Calculate and update top stats panels
@@ -879,6 +1013,21 @@ function initDashboard() {
         if (realIndex !== -1) {
           allSubmissions.splice(realIndex, 1);
           localStorage.setItem('hsf_submissions', JSON.stringify(allSubmissions));
+          
+          if (supabaseClient) {
+            supabaseClient.from('hsf_submissions')
+              .delete()
+              .eq('email', subToDelete.email)
+              .eq('created_at', subToDelete.timestamp)
+              .then(({ error }) => {
+                if (error) {
+                  console.error('Failed to delete submission from Supabase:', error);
+                } else {
+                  console.log('Submission successfully deleted from Supabase.');
+                }
+              });
+          }
+
           showToast(`Deleted submission from ${subToDelete.name}`, 'info');
           fetchSubmissions(); // Re-fetch and re-render
         }
@@ -945,6 +1094,18 @@ function initDashboard() {
 
   modalConfirmBtn.addEventListener('click', () => {
     localStorage.setItem('hsf_submissions', JSON.stringify([]));
+    if (supabaseClient) {
+      supabaseClient.from('hsf_submissions')
+        .delete()
+        .neq('name', 'none')
+        .then(({ error }) => {
+          if (error) {
+            console.error('Failed to clear submissions in Supabase:', error);
+          } else {
+            console.log('Submissions successfully cleared in Supabase.');
+          }
+        });
+    }
     confirmationModal.classList.remove('active');
     showToast("Cleared all submissions from database.", "success");
     fetchSubmissions();
@@ -1150,6 +1311,25 @@ function initDashboard() {
       ];
 
       localStorage.setItem('hsf_submissions', JSON.stringify(mockData));
+      if (supabaseClient) {
+        const rows = mockData.map(item => ({
+          name: item.name,
+          email: item.email,
+          org: item.org,
+          sector: item.sector,
+          message: item.message,
+          created_at: item.timestamp
+        }));
+        supabaseClient.from('hsf_submissions')
+          .insert(rows)
+          .then(({ error }) => {
+            if (error) {
+              console.error('Failed to seed submissions in Supabase:', error);
+            } else {
+              console.log('Submissions successfully seeded in Supabase.');
+            }
+          });
+      }
       showToast("Demo database populated successfully!", "success");
       fetchSubmissions();
     });
