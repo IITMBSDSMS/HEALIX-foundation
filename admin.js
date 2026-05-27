@@ -130,6 +130,40 @@ const SEM_DEFAULTS = [
   { id:'sem-4', tag:'Seminar', title:'Biomedical AI Seminar', meta:'May 08, 2026 • Research Labs', desc:'HSF researchers hosting academic heads to share models on neural network sequences and database alignments.', img:'https://images.unsplash.com/photo-1531482615713-2afd69097998?q=80&w=1920' }
 ];
 
+function compressImage(file, maxSize, callback) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let width = img.width;
+      let height = img.height;
+      if (width > maxSize || height > maxSize) {
+        if (width > height) {
+          height *= maxSize / width;
+          width = maxSize;
+        } else {
+          width *= maxSize / height;
+          height = maxSize;
+        }
+      }
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      callback(canvas.toDataURL('image/jpeg', 0.8));
+    };
+    img.onerror = () => {
+      callback(e.target.result);
+    };
+    img.src = e.target.result;
+  };
+  reader.onerror = () => {
+    showToast('Failed to read file.', 'error');
+  };
+  reader.readAsDataURL(file);
+}
+
 async function syncSeminarsToSupabase(data) {
   if (!supabaseClient) return;
   try {
@@ -225,14 +259,9 @@ function initSeminarsCMS() {
       showToast('Please upload a valid image file (PNG, JPG, WEBP).', 'error');
       return;
     }
-    const maxMB = 5;
-    if (file.size > maxMB * 1024 * 1024) {
-      showToast(`Image too large. Max ${maxMB}MB allowed.`, 'error');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = (e) => setImage(e.target.result);
-    reader.readAsDataURL(file);
+    compressImage(file, 800, (compressedBase64) => {
+      setImage(compressedBase64);
+    });
   }
 
   // ---- Drop Zone events ----
@@ -583,14 +612,9 @@ function initTestimonialsCMS() {
       showToast('Please upload a valid image file (PNG, JPG, WEBP).', 'error');
       return;
     }
-    const maxMB = 5;
-    if (file.size > maxMB * 1024 * 1024) {
-      showToast(`Image too large. Max ${maxMB}MB allowed.`, 'error');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = (e) => setImage(e.target.result);
-    reader.readAsDataURL(file);
+    compressImage(file, 300, (compressedBase64) => {
+      setImage(compressedBase64);
+    });
   }
 
   // ---- Drop Zone events ----
